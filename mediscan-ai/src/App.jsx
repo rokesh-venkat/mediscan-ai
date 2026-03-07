@@ -2,27 +2,29 @@ import { useState, useRef, useEffect, useCallback } from "react";
 
 // --- Design Tokens ----------------------------------------------------------
 const T = {
-  bg:          "#F7F3EE",
+  bg:          "#EEF4F9",        // cool clinical blue-grey
   surface:     "#FFFFFF",
-  surfaceWarm: "#FDF9F4",
-  primary:     "#4cc20c",     // warm saffron-orange - trustworthy, Indian-rooted
-  primarySoft: "#FFF1EB",
-  primaryMid:  "#EA580C",
-  teal:        "#0D6E6E",
-  tealSoft:    "#E6F4F4",
-  gold:        "#B45309",
-  goldSoft:    "#FFFBEB",
-  danger:      "#B91C1C",
+  surfaceWarm: "#F4F9FC",
+  primary:     "#0369A1",        // deep medical blue
+  primarySoft: "#E0F2FE",
+  primaryMid:  "#0284C7",
+  primaryDark: "#075985",
+  teal:        "#0D9488",
+  tealSoft:    "#CCFBF1",
+  gold:        "#92400E",
+  goldSoft:    "#FEF3C7",
+  danger:      "#DC2626",
   dangerSoft:  "#FEF2F2",
-  warn:        "#B45309",
+  warn:        "#D97706",
   warnSoft:    "#FFFBEB",
-  safe:        "#065F46",
+  safe:        "#059669",
   safeSoft:    "#ECFDF5",
-  text:        "#1C1917",
-  textMid:     "#57534E",
-  textLight:   "#A8A29E",
-  border:      "#E7E0D8",
-  borderFocus: "#C2410C",
+  text:        "#0F172A",
+  textMid:     "#475569",
+  textLight:   "#94A3B8",
+  border:      "#CBD5E1",
+  borderLight: "#E2E8F0",
+  borderFocus: "#0369A1",
 };
 
 // --- 2023 AGS Beers Criteria (abbreviated, real clinical data) --------------
@@ -76,6 +78,26 @@ const KNOWN_INTERACTIONS = [
   { d1:"aspirin", d2:"ibuprofen", severity:"moderate", effect:"Ibuprofen may reduce cardioprotective effect of aspirin", mechanism:"Competitive COX-1 binding" },
   { d1:"atenolol", d2:"verapamil", severity:"major", effect:"Severe bradycardia and heart block", mechanism:"Additive AV node suppression" },
   { d1:"furosemide", d2:"gentamicin", severity:"major", effect:"Enhanced ototoxicity and nephrotoxicity", mechanism:"Additive renal/hearing toxicity" },
+];
+
+// --- Medicine suggestions for quick testing --------------------------------
+const SUGGESTED_MEDS = [
+  { name:"Metformin",      cat:"Diabetes",        icon:"🩺" },
+  { name:"Amlodipine",     cat:"Blood Pressure",  icon:"❤️" },
+  { name:"Atorvastatin",   cat:"Cholesterol",     icon:"💉" },
+  { name:"Aspirin",        cat:"Blood Thinner",   icon:"🩸" },
+  { name:"Warfarin",       cat:"Anticoagulant",   icon:"⚠️" },
+  { name:"Lisinopril",     cat:"BP / Heart",      icon:"❤️" },
+  { name:"Omeprazole",     cat:"Acidity",         icon:"💊" },
+  { name:"Simvastatin",    cat:"Cholesterol",     icon:"💉" },
+  { name:"Ibuprofen",      cat:"Pain / Anti-inflam", icon:"💊" },
+  { name:"Furosemide",     cat:"Diuretic",        icon:"💧" },
+  { name:"Digoxin",        cat:"Heart Failure",   icon:"❤️" },
+  { name:"Clopidogrel",    cat:"Antiplatelet",    icon:"🩸" },
+  { name:"Levothyroxine",  cat:"Thyroid",         icon:"🦋" },
+  { name:"Glipizide",      cat:"Diabetes",        icon:"🩺" },
+  { name:"Tramadol",       cat:"Pain",            icon:"💊" },
+  { name:"Ciprofloxacin",  cat:"Antibiotic",      icon:"🔬" },
 ];
 
 // --- Medication schedule timing rules --------------------------------------
@@ -199,11 +221,13 @@ function useBreakpoint() {
 // --- Styles -----------------------------------------------------------------
 const GS = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Outfit:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;0,900;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     html { font-size:16px; }
-    body { font-family:'Outfit',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; }
-    .serif { font-family:'Lora',serif; }
+    body { font-family:'Plus Jakarta Sans',sans-serif; -webkit-font-smoothing:antialiased; min-height:100vh; background:#EEF4F9; }
+    /* Clinical crosshatch pattern on background */
+    .rsp-shell { background: #EEF4F9; }
+    .serif { font-family:'Merriweather',serif; }
     ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#E7E0D8;border-radius:10px}
     @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
@@ -215,21 +239,21 @@ const GS = () => (
     .fi4{animation:fadeIn .4s .28s ease both}
     .spin{animation:spin .9s linear infinite}
     .pulse{animation:pulse 1.5s ease infinite}
-    .card{background:#fff;border:1px solid #E7E0D8;border-radius:16px;transition:box-shadow .2s,transform .2s}
-    .card:hover{box-shadow:0 6px 28px rgba(194,65,12,.09);transform:translateY(-1px)}
-    .card-warm{background:#FDF9F4;border:1px solid #E7E0D8;border-radius:16px}
-    .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
-    .btn-primary{background:#C2410C;color:#fff}
-    .btn-primary:hover{background:#EA580C;box-shadow:0 4px 14px rgba(194,65,12,.3)}
-    .btn-secondary{background:#fff;color:#1C1917;border:1px solid #E7E0D8}
-    .btn-secondary:hover{background:#FFF1EB;border-color:#C2410C;color:#C2410C}
+    .card{background:#fff;border:1px solid #E2E8F0;border-radius:14px;transition:box-shadow .22s,transform .18s;box-shadow:0 1px 4px rgba(3,105,161,.06)}
+    .card:hover{box-shadow:0 6px 24px rgba(3,105,161,.12);transform:translateY(-2px)}
+    .card-warm{background:#F4F9FC;border:1px solid #E2E8F0;border-radius:14px}
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:10px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
+    .btn-primary{background:linear-gradient(135deg,#0369A1,#0284C7);color:#fff;box-shadow:0 2px 8px rgba(3,105,161,.25)}
+    .btn-primary:hover{background:linear-gradient(135deg,#075985,#0369A1);box-shadow:0 4px 16px rgba(3,105,161,.35);transform:translateY(-1px)}
+    .btn-secondary{background:#fff;color:#0369A1;border:1.5px solid #0369A1}
+    .btn-secondary:hover{background:#E0F2FE;border-color:#075985;color:#075985;transform:translateY(-1px)}
     .btn-teal{background:#0D6E6E;color:#fff}
     .btn-teal:hover{background:#0a5c5c}
     .btn-ghost{background:transparent;color:#57534E;padding:8px 10px}
     .btn-ghost:hover{background:#F7F3EE;color:#1C1917}
     .btn-sm{padding:7px 12px;font-size:13px;border-radius:8px}
-    .input{width:100%;padding:10px 14px;border:1.5px solid #E7E0D8;border-radius:10px;font-family:'Outfit',sans-serif;font-size:14px;color:#1C1917;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
-    .input:focus{border-color:#C2410C;box-shadow:0 0 0 3px rgba(194,65,12,.1)}
+    .input{width:100%;padding:10px 14px;border:1.5px solid #E7E0D8;border-radius:10px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:#1C1917;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+    .input:focus{border-color:#0369A1;box-shadow:0 0 0 3px rgba(3,105,161,.12)}
     .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600}
     .badge-major{background:#FEE2E2;color:#991B1B}
     .badge-moderate{background:#FEF3C7;color:#92400E}
@@ -237,16 +261,16 @@ const GS = () => (
     .badge-high{background:#FEE2E2;color:#991B1B}
     .badge-beers{background:#FFF3E0;color:#B45309;border:1px solid #FCD34D}
     .tab{padding:9px 16px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;transition:all .15s;color:#57534E;border:none;background:transparent}
-    .tab.on{background:#C2410C;color:#fff}
-    .tab:not(.on):hover{background:#FFF1EB;color:#C2410C}
-    .tag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:#FFF1EB;border:1px solid #FDBA74;border-radius:99px;font-size:13px;font-weight:500;color:#C2410C}
-    .sev-major{border-left:3px solid #B91C1C;background:#FEF2F2}
-    .sev-moderate{border-left:3px solid #B45309;background:#FFFBEB}
-    .sev-minor{border-left:3px solid #065F46;background:#ECFDF5}
-    .sev-beers{border-left:3px solid #F59E0B;background:#FFFBEB}
-    .drag{border:2px dashed #E7E0D8;border-radius:14px;padding:32px;text-align:center;cursor:pointer;transition:all .2s;background:#F7F3EE}
-    .drag:hover,.drag.over{border-color:#C2410C;background:#FFF1EB}
-    .slot{background:#FDF9F4;border:1px solid #E7E0D8;border-radius:12px;padding:14px 16px}
+    .tab.on{background:linear-gradient(135deg,#0369A1,#0284C7);color:#fff;box-shadow:0 2px 8px rgba(3,105,161,.25)}
+    .tab:not(.on):hover{background:#E0F2FE;color:#0369A1;}
+    .tag{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:#E0F2FE;border:1.5px solid #BAE6FD;border-radius:99px;font-size:13px;font-weight:600;color:#075985}
+    .sev-major{border-left:4px solid #DC2626;background:linear-gradient(to right,#FEF2F2,#fff)}
+    .sev-moderate{border-left:4px solid #D97706;background:linear-gradient(to right,#FFFBEB,#fff)}
+    .sev-minor{border-left:4px solid #059669;background:linear-gradient(to right,#ECFDF5,#fff)}
+    .sev-beers{border-left:4px solid #F59E0B;background:linear-gradient(to right,#FFFBEB,#fff)}
+    .drag{border:2px dashed #CBD5E1;border-radius:14px;padding:32px;text-align:center;cursor:pointer;transition:all .2s;background:#F0F8FF}
+    .drag:hover,.drag.over{border-color:#0369A1;background:#E0F2FE;box-shadow:0 4px 16px rgba(3,105,161,.12)}
+    .slot{background:#fff;border:1.5px solid #E2E8F0;border-radius:13px;padding:15px 16px;box-shadow:0 1px 4px rgba(3,105,161,.06)}
     .slot-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
     .section-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A8A29E;margin-bottom:10px}
     details>summary{cursor:pointer;list-style:none;outline:none}
@@ -277,14 +301,14 @@ const GS = () => (
       display:flex; align-items:center; gap:10px;
       padding:10px 16px; margin:2px 8px; border-radius:10px;
       border:none; background:transparent; cursor:pointer;
-      font-family:'Outfit',sans-serif; font-size:14px; font-weight:500;
+      font-family:'Plus Jakarta Sans',sans-serif; font-size:14px; font-weight:500;
       color:#57534E; transition:all .15s; text-align:left; width:calc(100% - 16px);
     }
-    .rsp-nav-item.on { background:#FFF1EB; color:#C2410C; font-weight:600; }
+    .rsp-nav-item.on { background:linear-gradient(135deg,#E0F2FE,#EFF6FF); color:#0369A1; font-weight:700; border-right:3px solid #0369A1; border-radius:10px 0 0 10px; }
     .rsp-nav-item:not(.on):hover { background:#F7F3EE; color:#1C1917; }
     .rsp-nav-badge {
       margin-left:auto; font-size:10px; font-weight:700;
-      padding:2px 7px; border-radius:99px; background:#FFF1EB; color:#C2410C;
+      padding:2px 7px; border-radius:99px; background:#E0F2FE; color:#0369A1;
     }
     .rsp-sidebar-footer {
       padding:16px; margin-top:auto; border-top:1px solid #E7E0D8;
@@ -319,10 +343,10 @@ const GS = () => (
     .rsp-bottom-item {
       display:flex; flex-direction:column; align-items:center; gap:3px;
       padding:7px 10px; border-radius:12px; border:none; cursor:pointer;
-      transition:all .15s; font-family:'Outfit',sans-serif;
+      transition:all .15s; font-family:'Plus Jakarta Sans',sans-serif;
       font-size:10px; font-weight:600; background:transparent; color:#A8A29E;
     }
-    .rsp-bottom-item.on { color:#C2410C; background:#FFF1EB; }
+    .rsp-bottom-item.on { color:#0369A1; background:#E0F2FE; }
     .rsp-bottom-item:not(.on):hover { color:#57534E; background:#F7F3EE; }
 
     /* -- Page body scroll area -- */
@@ -436,12 +460,12 @@ function Nav({page, setPage, drugs, hasDanger}) {
     <aside className="rsp-sidebar">
       <div className="rsp-sidebar-logo">
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:36,height:36,borderRadius:10,background:"#C2410C",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"#0369A1",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             <Ic p={ICONS.shield} s={18} c="#fff"/>
           </div>
           <div>
             <div className="serif" style={{fontSize:16,fontWeight:700,color:"#1C1917",lineHeight:1.2}}>MediCheck</div>
-            <div style={{fontSize:10,color:"#A8A29E",fontWeight:500}}>Polypharmacy · HC-03</div>
+            <div style={{fontSize:10,color:"#A8A29E",fontWeight:500}}>Polypharmacy · </div>
           </div>
         </div>
       </div>
@@ -466,10 +490,10 @@ function Nav({page, setPage, drugs, hasDanger}) {
       </nav>
 
       <div className="rsp-sidebar-footer">
-        <div style={{padding:"12px 14px",background:"#F7F3EE",borderRadius:12,border:"1px solid #E7E0D8"}}>
-          <p style={{fontSize:10,fontWeight:700,color:"#A8A29E",letterSpacing:".08em",textTransform:"uppercase",marginBottom:4}}>Medicines loaded</p>
-          <p style={{fontSize:22,fontWeight:800,color:drugs.length>0?"#C2410C":"#A8A29E",lineHeight:1}}>{drugs.length}</p>
-          <p style={{fontSize:11,color:"#57534E",marginTop:2}}>in current session</p>
+        <div style={{padding:"14px",background:"linear-gradient(135deg,#EFF6FF,#E0F2FE)",borderRadius:12,border:"1px solid #BAE6FD"}}>
+          <p style={{fontSize:10,fontWeight:700,color:"#94A3B8",letterSpacing:".1em",textTransform:"uppercase",marginBottom:4}}>Medicines Loaded</p>
+          <p style={{fontSize:28,fontWeight:800,color:drugs.length>0?"#0369A1":"#CBD5E1",lineHeight:1,fontFamily:"'Merriweather',serif"}}>{drugs.length}</p>
+          <p style={{fontSize:11,color:"#475569",marginTop:4,fontWeight:500}}>in current session</p>
         </div>
       </div>
     </aside>
@@ -763,10 +787,44 @@ Do NOT start with "This" - start directly with the risk.`,
           </p>
         )}
         {drugs.length===1&&(
-          <p style={{fontSize:12,color:T.warn,marginTop:10,background:T.warnSoft,padding:"7px 10px",borderRadius:8,border:`1px solid #FCD34D`}}>
-            ℹ️ Add at least one more medicine to check interactions.
+          <p style={{fontSize:12,color:T.warn,marginTop:10,background:T.warnSoft,padding:"7px 10px",borderRadius:8,border:`1px solid #FCD34D`,display:"flex",gap:6,alignItems:"flex-start"}}>
+            <span>ℹ️</span><span>Add at least one more medicine to check interactions.</span>
           </p>
         )}
+      </div>
+
+      {/* Medicine suggestions for quick testing */}
+      <div className="card fi3" style={{padding:"14px 16px",marginBottom:16,background:"linear-gradient(135deg,#F0F9FF,#EFF6FF)",border:"1px solid #BAE6FD"}}>
+        <p className="section-title" style={{color:"#0369A1",marginBottom:10}}>
+          Quick Add — Common Medicines to Test
+        </p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+          {SUGGESTED_MEDS.filter(m => !drugs.map(d=>d.toLowerCase()).includes(m.name.toLowerCase())).map(m=>(
+            <button key={m.name}
+              onClick={()=>{
+                if(!drugs.map(d=>d.toLowerCase()).includes(m.name.toLowerCase()))
+                  setDrugs(p=>[...p, m.name]);
+              }}
+              style={{
+                display:"inline-flex",alignItems:"center",gap:6,
+                padding:"5px 12px",background:"#fff",
+                border:"1.5px solid #BAE6FD",borderRadius:99,
+                fontSize:12,fontWeight:600,color:"#075985",
+                cursor:"pointer",transition:"all .15s",
+                fontFamily:"'Plus Jakarta Sans',sans-serif"
+              }}
+              onMouseOver={e=>{e.currentTarget.style.background="#E0F2FE";e.currentTarget.style.borderColor="#0369A1";}}
+              onMouseOut={e=>{e.currentTarget.style.background="#fff";e.currentTarget.style.borderColor="#BAE6FD";}}
+            >
+              <span style={{fontSize:13}}>{m.icon}</span>
+              <span>{m.name}</span>
+              <span style={{fontSize:10,color:"#94A3B8",fontWeight:500}}>{m.cat}</span>
+            </button>
+          ))}
+        </div>
+        <p style={{fontSize:11,color:"#94A3B8",marginTop:9}}>
+          Tip: Try adding <strong>Warfarin + Aspirin</strong> or <strong>Simvastatin + Ciprofloxacin</strong> to see interactions
+        </p>
       </div>
       </div>{/* end g2d */}
 
@@ -777,7 +835,7 @@ Do NOT start with "This" - start directly with the risk.`,
         style={{
           width:"100%", display:"flex", alignItems:"center", justifyContent:"center",
           gap:8, padding:"14px", fontSize:15, fontWeight:600, borderRadius:12, border:"none",
-          fontFamily:"'Outfit',sans-serif", cursor: drugs.length<2||loading ? "not-allowed":"pointer",
+          fontFamily:"'Plus Jakarta Sans',sans-serif", cursor: drugs.length<2||loading ? "not-allowed":"pointer",
           background: drugs.length<2 ? T.border : loading ? "#9CA3AF" : T.primary,
           color: drugs.length<2 ? T.textLight : "#fff",
           transition:"all .2s",
@@ -1067,7 +1125,7 @@ function ScanPage({onDetected}) {
         <div className="card fi" style={{padding:"18px 20px",marginTop:18}}>
           <p className="section-title">Detection Result</p>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <span style={{fontSize:22,fontWeight:700,fontFamily:"'Lora',serif"}}>{result}</span>
+            <span style={{fontSize:22,fontWeight:700,fontFamily:"'Merriweather',serif"}}>{result}</span>
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:22,fontWeight:800,color:confColor}}>{confidence}%</div>
               <div style={{fontSize:10,color:T.textLight,fontWeight:600}}>CONFIDENCE</div>
@@ -1113,13 +1171,11 @@ const SLOT_META = [
 ];
 const FOOD_NOTES = ["With food","Before food","After food","With water","With milk","Empty stomach","No restriction"];
 
-function SchedulePage({drugs}) {
-  // assignments: { drugName: { slot: "morning"|"afternoon"|"evening"|"night", note: string } }
-  const [assignments, setAssignments] = useState({});
+function SchedulePage({drugs, assignments, setAssignments}) {
   const [view, setView] = useState("assign"); // "assign" | "timeline"
   const [dragDrug, setDragDrug] = useState(null);
 
-  // Auto-seed from buildSchedule when drugs change
+  // Auto-seed from buildSchedule ONLY for new drugs not yet assigned
   useEffect(() => {
     const auto = buildSchedule(drugs);
     const next = {};
@@ -1128,11 +1184,21 @@ function SchedulePage({drugs}) {
         next[item.drug] = { slot, note: item.note||"No restriction" };
       });
     });
-    // Keep manual overrides for drugs already assigned
+    // IMPORTANT: only seed drugs that do NOT already have a manual assignment
     setAssignments(prev => {
-      const merged = {...next};
-      Object.keys(prev).forEach(d => { if(drugs.includes(d)) merged[d] = prev[d]; });
-      return merged;
+      const merged = {...prev};
+      drugs.forEach(d => {
+        if(!merged[d]) {
+          // Drug not yet assigned at all - use auto schedule
+          merged[d] = next[d] || { slot: "morning", note: "No restriction" };
+        }
+        // If already assigned (manually or loaded from history) - KEEP existing assignment
+      });
+      // Remove drugs that are no longer in the list
+      Object.keys(merged).forEach(d => {
+        if(!drugs.includes(d)) delete merged[d];
+      });
+      return {...merged};
     });
   }, [drugs.join(",")]);
 
@@ -1227,7 +1293,7 @@ function SchedulePage({drugs}) {
                           padding:"9px 10px",borderRadius:10,border:`1.5px solid ${isActive?T.primary:T.border}`,
                           background:isActive?T.primarySoft:T.surface,
                           color:isActive?T.primary:T.textMid,
-                          cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:13,fontWeight:isActive?700:400,
+                          cursor:"pointer",fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:13,fontWeight:isActive?700:400,
                           display:"flex",alignItems:"center",justifyContent:"space-between",transition:"all .15s"
                         }}>
                         <span>{slot.emoji} {slot.label}</span>
@@ -1248,7 +1314,7 @@ function SchedulePage({drugs}) {
                           padding:"5px 11px",borderRadius:99,border:`1.5px solid ${isActive?T.teal:T.border}`,
                           background:isActive?T.tealSoft:T.surface,
                           color:isActive?T.teal:T.textMid,
-                          cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:isActive?600:400,transition:"all .15s"
+                          cursor:"pointer",fontFamily:"'Plus Jakarta Sans',sans-serif",fontSize:12,fontWeight:isActive?600:400,transition:"all .15s"
                         }}>
                         {note}
                       </button>
@@ -1335,6 +1401,7 @@ function HistoryPage({
   patientName, setPatientName,
   patientAge,  setPatientAge,
   caregiverEmail, setCaregiverEmail,
+  scheduleAssignments, setScheduleAssignments,
   setPage
 }) {
   const [saving,     setSaving]     = useState(false);
@@ -1364,6 +1431,7 @@ function HistoryPage({
       patientAge:    patientAge.trim(),
       caregiverEmail:caregiverEmail.trim(),
       drugs:         [...drugs],
+      scheduleAssignments: {...scheduleAssignments},
       date:          new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}),
     };
     setSessions(p=>[entry, ...p]);
@@ -1371,7 +1439,7 @@ function HistoryPage({
     showToast(`Saved: ${entry.label}`);
   };
 
-  // -- Load: restore entire patient profile into the Check tab ---------------
+  // -- Load: restore entire patient profile including schedule ---------------
   const loadSession = async (s) => {
     setLoadingId(s.id);
     await sleep(700);
@@ -1380,6 +1448,13 @@ function HistoryPage({
     if(s.patientName)    setPatientName(s.patientName);
     if(s.patientAge)     setPatientAge(s.patientAge);
     if(s.caregiverEmail) setCaregiverEmail(s.caregiverEmail);
+    // Restore the EXACT schedule that was last saved for this patient
+    if(s.scheduleAssignments && Object.keys(s.scheduleAssignments).length > 0) {
+      setScheduleAssignments({...s.scheduleAssignments});
+    } else {
+      // No saved schedule - clear so SchedulePage auto-builds from scratch
+      setScheduleAssignments({});
+    }
 
     setLoadingId(null);
     showToast(`Loaded ${s.patientName||"session"} - navigating to Check tab…`);
@@ -1590,7 +1665,7 @@ ${beersFlags.map(b=>`• ${b.drug}: ${b.data.reason}`).join("\n")}
 
 Please consult a doctor immediately. Do NOT stop medicines without medical advice.
 
-Generated by HC-03 MediCheck`;
+Generated by  MediCheck`;
 
   const whatsappMsg = `🚨 *MEDICINE ALERT* for ${patientName||"Patient"}%0A%0A*Dangerous Interactions:*%0A${majorInteractions.map(i=>`• ${i.d1} + ${i.d2}`).join("%0A")}%0A%0AConsult doctor immediately.`;
 
@@ -1694,6 +1769,8 @@ export default function App() {
   const [patientName, setPatientName] = useState("");
   const [patientAge, setPatientAge]   = useState("");
   const [caregiverEmail, setCaregiverEmail] = useState("");
+  // Schedule assignments lifted to App shell so they persist across tabs and save/load with patient
+  const [scheduleAssignments, setScheduleAssignments] = useState({});
   const bp = useBreakpoint();
 
   const handleDetected = name => {
@@ -1720,13 +1797,14 @@ export default function App() {
               caregiverEmail={caregiverEmail} setCaregiverEmail={setCaregiverEmail}
             />,
     scan:     <ScanPage onDetected={handleDetected}/>,
-    schedule: <SchedulePage drugs={drugs}/>,
+    schedule: <SchedulePage drugs={drugs} assignments={scheduleAssignments} setAssignments={setScheduleAssignments}/>,
     history:  <HistoryPage
                 sessions={sessions} setSessions={setSessions}
                 drugs={drugs} setDrugs={setDrugs}
                 patientName={patientName} setPatientName={setPatientName}
                 patientAge={patientAge} setPatientAge={setPatientAge}
                 caregiverEmail={caregiverEmail} setCaregiverEmail={setCaregiverEmail}
+                scheduleAssignments={scheduleAssignments} setScheduleAssignments={setScheduleAssignments}
                 setPage={setPage}
               />,
     alerts:   <AlertsPage
@@ -1753,12 +1831,12 @@ export default function App() {
           {!isDesktop && (
             <div className="rsp-header">
               <div style={{display:"flex",alignItems:"center",gap:9}}>
-                <div style={{width:32,height:32,borderRadius:9,background:"#C2410C",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <div style={{width:32,height:32,borderRadius:9,background:"#0369A1",display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <Ic p={ICONS.shield} s={15} c="#fff"/>
                 </div>
                 <div>
                   <span className="serif" style={{fontSize:15,fontWeight:700,color:"#1C1917"}}>MediCheck</span>
-                  <span style={{fontSize:10,color:"#A8A29E",display:"block",lineHeight:1}}>HC-03 · Polypharmacy Risk</span>
+                  <span style={{fontSize:10,color:"#A8A29E",display:"block",lineHeight:1}}>Polypharmacy Safety</span>
                 </div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -1768,7 +1846,7 @@ export default function App() {
                     <Ic p={ICONS.warn} s={13}/> Alert
                   </button>
                 )}
-                <div style={{fontSize:12,color:"#C2410C",fontWeight:600,padding:"5px 11px",background:"#FFF1EB",borderRadius:99,border:"1px solid #FDBA74"}}>
+                <div style={{fontSize:12,color:"#0369A1",fontWeight:600,padding:"5px 11px",background:"#E0F2FE",borderRadius:99,border:"1px solid #FDBA74"}}>
                   {drugs.length} med{drugs.length!==1?"s":""}
                 </div>
               </div>
@@ -1785,7 +1863,7 @@ export default function App() {
                 <p style={{fontSize:12,color:"#A8A29E"}}>
                   {patientName
                     ? `Patient: ${patientName}${patientAge ? ", age " + patientAge : ""}`
-                    : "HC-03 · For elderly patients on multiple medications"}
+                    : "Polypharmacy risk checker for elderly patients"}
                 </p>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1795,9 +1873,9 @@ export default function App() {
                     <Ic p={ICONS.warn} s={14}/> Dangerous Interaction
                   </button>
                 )}
-                <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:"#FFF1EB",borderRadius:10,border:"1px solid #FDBA74"}}>
-                  <Ic p={ICONS.pill} s={14} c="#C2410C"/>
-                  <span style={{fontSize:13,color:"#C2410C",fontWeight:600}}>{drugs.length} medicine{drugs.length!==1?"s":""}</span>
+                <div style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:"#E0F2FE",borderRadius:10,border:"1px solid #FDBA74"}}>
+                  <Ic p={ICONS.pill} s={14} c="#0369A1"/>
+                  <span style={{fontSize:13,color:"#0369A1",fontWeight:600}}>{drugs.length} medicine{drugs.length!==1?"s":""}</span>
                 </div>
               </div>
             </div>
