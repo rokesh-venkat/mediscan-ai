@@ -5,7 +5,7 @@ const T = {
   bg:          "#F7F3EE",
   surface:     "#FFFFFF",
   surfaceWarm: "#FDF9F4",
-  primary:     "#C2410C",     // warm saffron-orange - trustworthy, Indian-rooted
+  primary:     "#4cc20c",     // warm saffron-orange - trustworthy, Indian-rooted
   primarySoft: "#FFF1EB",
   primaryMid:  "#EA580C",
   teal:        "#0D6E6E",
