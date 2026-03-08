@@ -150,10 +150,10 @@ async function callClaudeVision(imageBase64, prompt) {
 //  1. Go to console.cloud.google.com → Enable "Cloud Vision API"
 //  2. APIs & Services → Credentials → Create API Key
 //  3. Paste your key below
-const GOOGLE_VISION_API_KEY = "AIzaSyBoGMQxWsQMMXV5iBF-YHOmDJyc1ZV-7go"; // ← replace with your key
+const GOOGLE_VISION_API_KEY = "AIzaSyBoGMQxWsQMMXV5iBF-YHOmDJyc1ZV-7go";
 
 async function detectMedicineFromImage(imageBase64) {
-  if(!GOOGLE_VISION_API_KEY || GOOGLE_VISION_API_KEY === "AIzaSyBoGMQxWsQMMXV5iBF-YHOmDJyc1ZV-7go") {
+  if(!GOOGLE_VISION_API_KEY || GOOGLE_VISION_API_KEY === "YOUR_GOOGLE_VISION_API_KEY") {
     return { name: null, confidence: 0, rawText: "", noKey: true };
   }
   try {
@@ -1116,6 +1116,29 @@ Do NOT start with "This" - start directly with the risk.`,
   );
 }
 
+// --- Manual Name Entry (fallback when scan fails) ----------------------------
+function ManualNameEntry({ onAdd, onCancel }) {
+  const [val, setVal] = useState("");
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <input
+        className="input"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && val.trim() && onAdd(val.trim())}
+        placeholder="e.g. Metformin, Amlodipine..."
+        autoFocus
+      />
+      <div style={{display:"flex",gap:8}}>
+        <button className="btn btn-primary btn-sm" onClick={() => val.trim() && onAdd(val.trim())} disabled={!val.trim()}>
+          <Ic p={ICONS.plus} s={13}/> Add to Check List
+        </button>
+        <button className="btn btn-secondary btn-sm" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 // --- Scan Page ----------------------------------------------------------------
 function ScanPage({onDetected}) {
   const [image,setImage]       = useState(null);
@@ -1243,37 +1266,46 @@ function ScanPage({onDetected}) {
       )}
 
       {!loading && image && result === null && confidence === 0 && (
-        <div className="card fi" style={{padding:"18px 20px",marginTop:18,background:T.warnSoft,border:"1px solid #FCD34D"}}>
-          <p style={{fontWeight:700,color:T.warn,marginBottom:8}}>Could not detect medicine name</p>
-          {(!GOOGLE_VISION_API_KEY || GOOGLE_VISION_API_KEY === "YOUR_GOOGLE_VISION_API_KEY") ? (
+        <div className="card fi" style={{padding:"18px 20px",marginTop:18,background:T.warnSoft,border:"1px solid #FCD34D",borderRadius:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:"#FDE68A",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>⚠️</div>
             <div>
-              <p style={{fontSize:13,color:T.textMid,lineHeight:1.6,marginBottom:10}}>
-                To use Pill Scanner in your own website, add a <strong>Google Cloud Vision API key</strong>:
-              </p>
-              <ol style={{fontSize:12,color:T.textMid,paddingLeft:18,lineHeight:2.1}}>
-                <li>Go to <strong>console.cloud.google.com</strong></li>
-                <li>Enable <strong>Cloud Vision API</strong></li>
-                <li>Create an API key and paste it in the code at <code style={{background:"#fff",padding:"1px 5px",borderRadius:4}}>GOOGLE_VISION_API_KEY</code></li>
-              </ol>
-              <p style={{fontSize:12,color:T.textMid,marginTop:8}}>Inside Claude.ai, AI-based detection runs automatically.</p>
+              <p style={{fontWeight:700,color:T.warn,fontSize:14}}>Could not read medicine name</p>
+              <p style={{fontSize:12,color:T.textMid}}>Label text was not clear enough to detect</p>
             </div>
-          ) : (
-            <p style={{fontSize:13,color:T.textMid,lineHeight:1.6}}>Try a clearer image with better lighting and the medicine name clearly visible in the frame.</p>
-          )}
-          <button className="btn btn-secondary btn-sm" style={{marginTop:12}} onClick={()=>{setImage(null);setB64(null);setResult(null);setScanMsg("");}}>
-            Try Again
-          </button>
+          </div>
+          <ul style={{fontSize:12,color:T.textMid,paddingLeft:16,lineHeight:2,marginBottom:12}}>
+            <li>Move closer so the name fills the frame</li>
+            <li>Use bright, even lighting with no glare</li>
+            <li>Hold steady — blurry images cannot be read</li>
+          </ul>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button className="btn btn-primary btn-sm" onClick={()=>{setImage(null);setB64(null);setResult(null);setScanMsg("");}}>
+              <Ic p={ICONS.camera} s={13}/> Try Again
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setResult("__manual__")}>
+              Type Name Manually
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="card-warm fi2" style={{padding:"14px 16px",marginTop:18}}>
-        <p style={{fontSize:13,color:T.warn,fontWeight:500,marginBottom:4}}>📸 Tips for best scan</p>
-        <ul style={{fontSize:12,color:T.textMid,paddingLeft:16,lineHeight:1.9}}>
-          <li>Flat surface, no glare on packaging</li>
-          <li>Medicine name should fill most of the frame</li>
-          <li>Good lighting - natural light works best</li>
-          <li>Low confidence = always verify manually</li>
-        </ul>
+      {!loading && result === "__manual__" && (
+        <div className="card fi" style={{padding:"18px 20px",marginTop:18,borderRadius:14}}>
+          <p style={{fontSize:13,fontWeight:700,color:T.textMid,marginBottom:10}}>Enter medicine name manually</p>
+          <ManualNameEntry onAdd={name=>{onDetected(name);setImage(null);setB64(null);setResult(null);setScanMsg("");}} onCancel={()=>{setImage(null);setB64(null);setResult(null);setScanMsg("");}}/>
+        </div>
+      )}
+
+      <div style={{padding:"16px 18px",marginTop:18,background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:14}}>
+        <p style={{fontSize:13,fontWeight:700,color:"#0369A1",marginBottom:10}}>📸 Tips for best results</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px 14px"}}>
+          {["Hold phone steady, no blur","Name fills most of frame","Bright even lighting, no glare","Capture the front label","JPG or PNG, any size","Low confidence — verify name"].map((tip,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"flex-start",gap:7,fontSize:12,color:T.textMid,lineHeight:1.5}}>
+              <span style={{color:"#0369A1",flexShrink:0}}>✓</span>{tip}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
