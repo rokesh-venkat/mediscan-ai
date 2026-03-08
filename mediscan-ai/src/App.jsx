@@ -145,6 +145,52 @@ async function callClaudeVision(imageBase64, prompt) {
   return d.content?.[0]?.text || "";
 }
 
+// ── Google Cloud Vision API — pill label OCR (works in all browsers/apps) ────
+// To enable outside Claude.ai:
+//  1. Go to console.cloud.google.com → Enable "Cloud Vision API"
+//  2. APIs & Services → Credentials → Create API Key
+//  3. Paste your key below
+const GOOGLE_VISION_API_KEY = "AIzaSyBoGMQxWsQMMXV5iBF-YHOmDJyc1ZV-7go"; // ← replace with your key
+
+async function detectMedicineFromImage(imageBase64) {
+  if(!GOOGLE_VISION_API_KEY || GOOGLE_VISION_API_KEY === "AIzaSyBoGMQxWsQMMXV5iBF-YHOmDJyc1ZV-7go") {
+    return { name: null, confidence: 0, rawText: "", noKey: true };
+  }
+  try {
+    const url  = `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`;
+    const body = {
+      requests: [{
+        image: { content: imageBase64 },
+        features: [
+          { type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 },
+          { type: "TEXT_DETECTION",          maxResults: 1 },
+        ]
+      }]
+    };
+    const r    = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+    const data = await r.json();
+    const ann  = data.responses?.[0];
+    if(!ann) return { name: null, confidence: 0, rawText: "" };
+
+    const rawText = ann.fullTextAnnotation?.text || ann.textAnnotations?.[0]?.description || "";
+    if(!rawText) return { name: null, confidence: 0, rawText: "" };
+
+    // Pick the most likely drug name: longest capitalised word/phrase in first 5 lines
+    const lines   = rawText.split("\n").map(l => l.trim()).filter(l => l.length > 2).slice(0, 8);
+    const scored  = lines
+      .map(line => ({ line: line.replace(/[^a-zA-Z\s]/g, "").trim(), raw: line }))
+      .filter(x => x.line.length > 2 && /[A-Za-z]/.test(x.line))
+      .sort((a, b) => b.line.length - a.line.length);
+
+    const name       = scored[0]?.raw || lines[0] || "Unknown";
+    const confidence = rawText.length > 8 ? Math.min(92, 55 + scored[0]?.line.length) : 15;
+    return { name, confidence, rawText };
+  } catch(e) {
+    console.error("Vision API error:", e);
+    return { name: null, confidence: 0, rawText: "", error: e.message };
+  }
+}
+
 async function fetchOpenFDA(drug1, drug2) {
   try {
     const q = encodeURIComponent(`"${drug1}" AND "${drug2}"`);
@@ -1072,40 +1118,66 @@ Do NOT start with "This" - start directly with the risk.`,
 
 // --- Scan Page ----------------------------------------------------------------
 function ScanPage({onDetected}) {
-  const [image,setImage] = useState(null);
-  const [b64,setB64] = useState(null);
-  const [loading,setLoading] = useState(false);
-  const [result,setResult] = useState(null);
+  const [image,setImage]       = useState(null);
+  const [b64,setB64]           = useState(null);
+  const [loading,setLoading]   = useState(false);
+  const [result,setResult]     = useState(null);
   const [confidence,setConfidence] = useState(null);
-  const [drag,setDrag] = useState(false);
+  const [drag,setDrag]         = useState(false);
+  const [scanMsg,setScanMsg]   = useState("");
   const fileRef = useRef();
 
   const loadFile = f => {
     if(!f) return;
     const reader = new FileReader();
-    reader.onload=e=>{setImage(e.target.result);setB64(e.target.result.split(",")[1]);setResult(null);};
+    reader.onload=e=>{
+      setImage(e.target.result);
+      setB64(e.target.result.split(",")[1]);
+      setResult(null);
+      setConfidence(null);
+      setScanMsg("");
+    };
     reader.readAsDataURL(f);
   };
 
   const analyze = async () => {
     if(!b64) return;
-    setLoading(true);setResult(null);setConfidence(null);
-    try {
-      const resp = await callClaudeVision(b64,
-        `Look at this image of a medicine bottle, strip, or blister pack label.
-        1. Identify the medicine/drug name printed on it.
-        2. Estimate your confidence (0-100%) that you read the name correctly.
-        Return JSON ONLY: {"name":"<drug name or Unknown>","confidence":<number>,"notes":"<any extra info>"}`
-      );
-      const clean = resp.replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean);
-      setResult(parsed.name||"Unknown");
-      setConfidence(parsed.confidence||0);
-    } catch { setResult("Detection failed"); setConfidence(0); }
+    setLoading(true); setResult(null); setConfidence(null); setScanMsg("Scanning label...");
+
+    // Try Google Cloud Vision first (works in all browsers / deployed apps)
+    const vision = await detectMedicineFromImage(b64);
+
+    if(vision.noKey) {
+      // No Vision API key — try Claude Vision (works inside Claude.ai artifact)
+      setScanMsg("Trying AI detection...");
+      try {
+        const resp = await callClaudeVision(b64,
+          "Look at this medicine bottle or strip label image. Identify the medicine name printed on it and estimate confidence 0-100%. Return JSON ONLY: {\"name\":\"drug name\",\"confidence\":number}"
+        );
+        const clean = resp.replace(/```json|```/g,"").trim();
+        const parsed = JSON.parse(clean);
+        setResult(parsed.name || null);
+        setConfidence(parsed.confidence || 0);
+      } catch {
+        setResult(null);
+        setConfidence(0);
+      }
+    } else if(vision.name && vision.confidence > 20) {
+      setResult(vision.name);
+      setConfidence(vision.confidence);
+    } else if(vision.rawText) {
+      setResult(vision.rawText.split("\n")[0] || null);
+      setConfidence(20);
+    } else {
+      setResult(null);
+      setConfidence(0);
+    }
+
+    setScanMsg("");
     setLoading(false);
   };
 
-  const confColor = confidence>=80?T.safe:confidence>=50?T.warn:T.danger;
+  const confColor = confidence >= 80 ? T.safe : confidence >= 50 ? T.warn : T.danger;
 
   return (
     <div >
@@ -1136,13 +1208,15 @@ function ScanPage({onDetected}) {
             </button>
           </div>
           <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",padding:"12px",fontSize:15,borderRadius:12}} onClick={analyze} disabled={loading}>
-            {loading?<><span className="spin" style={{display:"inline-block",width:15,height:15,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%"}}/>Analyzing…</>:<><Ic p={ICONS.search} s={17}/>Detect Medicine Name</>}
+            {loading
+              ? <><span className="spin" style={{display:"inline-block",width:15,height:15,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%"}}/>{scanMsg||"Analyzing..."}</>
+              : <><Ic p={ICONS.search} s={17}/>Detect Medicine Name</>}
           </button>
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>loadFile(e.target.files[0])}/>
         </div>
       )}
 
-      {result&&!loading&&(
+      {!loading && result && confidence > 0 && (
         <div className="card fi" style={{padding:"18px 20px",marginTop:18}}>
           <p className="section-title">Detection Result</p>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -1152,21 +1226,43 @@ function ScanPage({onDetected}) {
               <div style={{fontSize:10,color:T.textLight,fontWeight:600}}>CONFIDENCE</div>
             </div>
           </div>
-
-          {confidence<60&&(
-            <div style={{background:T.warnSoft,border:`1px solid #FCD34D`,borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:13,color:T.warn}}>
-              <strong>WARNING: Low confidence</strong> - please verify the name manually before proceeding.
+          {confidence < 60 && (
+            <div style={{background:T.warnSoft,border:"1px solid #FCD34D",borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:13,color:T.warn}}>
+              <strong>Low confidence</strong> — please verify the name manually before adding.
             </div>
           )}
-
           <div style={{display:"flex",gap:8,marginTop:4}}>
-            <button className="btn btn-primary btn-sm" onClick={()=>onDetected(result)} disabled={confidence<40}>
+            <button className="btn btn-primary btn-sm" onClick={()=>onDetected(result)} disabled={confidence < 30}>
               <Ic p={ICONS.plus} s={14}/> Add to Check List
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={()=>{setImage(null);setB64(null);setResult(null);}}>
+            <button className="btn btn-secondary btn-sm" onClick={()=>{setImage(null);setB64(null);setResult(null);setScanMsg("");}}>
               Scan Another
             </button>
           </div>
+        </div>
+      )}
+
+      {!loading && image && result === null && confidence === 0 && (
+        <div className="card fi" style={{padding:"18px 20px",marginTop:18,background:T.warnSoft,border:"1px solid #FCD34D"}}>
+          <p style={{fontWeight:700,color:T.warn,marginBottom:8}}>Could not detect medicine name</p>
+          {(!GOOGLE_VISION_API_KEY || GOOGLE_VISION_API_KEY === "YOUR_GOOGLE_VISION_API_KEY") ? (
+            <div>
+              <p style={{fontSize:13,color:T.textMid,lineHeight:1.6,marginBottom:10}}>
+                To use Pill Scanner in your own website, add a <strong>Google Cloud Vision API key</strong>:
+              </p>
+              <ol style={{fontSize:12,color:T.textMid,paddingLeft:18,lineHeight:2.1}}>
+                <li>Go to <strong>console.cloud.google.com</strong></li>
+                <li>Enable <strong>Cloud Vision API</strong></li>
+                <li>Create an API key and paste it in the code at <code style={{background:"#fff",padding:"1px 5px",borderRadius:4}}>GOOGLE_VISION_API_KEY</code></li>
+              </ol>
+              <p style={{fontSize:12,color:T.textMid,marginTop:8}}>Inside Claude.ai, AI-based detection runs automatically.</p>
+            </div>
+          ) : (
+            <p style={{fontSize:13,color:T.textMid,lineHeight:1.6}}>Try a clearer image with better lighting and the medicine name clearly visible in the frame.</p>
+          )}
+          <button className="btn btn-secondary btn-sm" style={{marginTop:12}} onClick={()=>{setImage(null);setB64(null);setResult(null);setScanMsg("");}}>
+            Try Again
+          </button>
         </div>
       )}
 
@@ -1883,10 +1979,14 @@ const DB = {
   async getSessions(uid) {
     try {
       const { sdk, db } = await getFB();
-      const q    = sdk.query(sdk.collection(db, "sessions"), sdk.where("uid", "==", uid), sdk.orderBy("createdAt", "desc"));
+      // No orderBy — avoids needing a Firestore composite index
+      const q    = sdk.query(sdk.collection(db, "sessions"), sdk.where("uid", "==", uid));
       const snap = await sdk.getDocs(q);
-      return snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
-    } catch (e) { console.error(e); return []; }
+      const docs = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
+      // Sort newest first on the client
+      docs.sort((a, b) => (b.createdAt?.seconds || b.id || 0) - (a.createdAt?.seconds || a.id || 0));
+      return docs;
+    } catch (e) { console.error("getSessions error:", e); return []; }
   },
 
   async addSession(uid, entry) {
